@@ -14,14 +14,14 @@ char msg[50];
 int value = 0;
 
 const bool TRACE = false;
-const bool DEBUG = true;
+const bool DEBUG = false;
 const bool TEST_RELAIS_ON_INIT = false;
 const bool STATE_ON = LOW;
 const bool STATE_OFF = HIGH;
 
-const int numberOfSwitches = 2;
-int switchPins[] = { D1, D2 };
 unsigned long turnOffTimes[numberOfSwitches];
+
+unsigned long lastActivity = millis();
 
 void connectWifi() {
   WiFi.begin(ssid, password);
@@ -101,9 +101,6 @@ void handleBody(byte* payload) {
 
   bool state = stateVariant.as<bool>();
   
-  
-  
-  
   if (durationVariant.success()) {
     unsigned long duration = durationVariant.as<unsigned long>();  
     Serial.printf("contains duration: %d\n", duration);
@@ -123,6 +120,14 @@ void handleBody(byte* payload) {
   }
 
   switchOn(switchNumber);
+
+  lastActivity = millis();
+
+  
+}
+
+void cleanRetainedMessage(char* topic) {
+  client.publish(topic, "", true);
 }
 
 void sendError(String msg) {
@@ -282,10 +287,31 @@ void logTrace(String message) {
   }
 }
 
+bool canSleep() {
+  for (int i = 0; i < numberOfSwitches; ++i) {
+    int pin = mapIdToPin(i);
+    if (digitalRead(pin) == STATE_ON) {
+      return false;
+    }
+  }
+
+  unsigned long now = millis();
+  unsigned diff = now - lastActivity;
+
+  // Serial.printf("Diff since last activity: %d\n", diff);
+  return now - lastActivity > 15000;
+}
+
 void loop() {
    if (!client.connected()) {
     reconnect();
   }
   client.loop();
   turnOffIfRequired();
+
+  if (canSleep()) {
+    logDebug("Going to sleep");
+    delay(500);
+    logDebug("Waking up");
+  }
 }
